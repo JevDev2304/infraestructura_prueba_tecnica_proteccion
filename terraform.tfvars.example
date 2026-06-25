@@ -1,0 +1,20 @@
+# Copiar este archivo a terraform.tfvars y completar los valores
+# NUNCA commitear terraform.tfvars al repositorio (contiene credenciales)
+
+# Región AWS donde se despliega todo
+aws_region = "us-east-1"
+
+# Nombre base para todos los recursos (letras, números y guiones)
+app_name = "prueba-tecnica"
+
+# Credenciales de la base de datos PostgreSQL
+# La contraseña debe tener al menos 8 caracteres
+db_username = "admin"
+db_password = "CambiarEsto123!"
+
+# Tag de la imagen Docker a desplegar
+# Después de hacer push a ECR: docker push <ecr_url>:v1.0.0
+image_tag = "latest"
+
+# Puerto de la aplicación (Spring Boot usa 8080 por defecto)
+container_port = 8080

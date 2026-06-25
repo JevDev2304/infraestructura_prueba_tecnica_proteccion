@@ -1,0 +1,19 @@
+# Credenciales reales — NUNCA commitear
+terraform.tfvars
+
+# Estado de Terraform — contiene passwords en texto plano
+*.tfstate
+*.tfstate.backup
+*.tfstate.*.backup
+
+# Directorio de trabajo de Terraform (binarios de providers)
+.terraform/
+
+# Archivos de override (uso local)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Variables de entorno locales
+.env
