@@ -4,6 +4,12 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "domain_name" {
+  description = "Dominio para el certificado SSL (ej: www.juanespruebastecnicascolombia.com)"
+  type        = string
+  default     = "www.juanespruebastecnicascolombia.com"
+}
+
 variable "app_name" {
   description = "Nombre de la aplicación (usado como prefijo en todos los recursos)"
   type        = string
