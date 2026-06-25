@@ -18,3 +18,7 @@ image_tag = "latest"
 
 # Puerto de la aplicación (Spring Boot usa 8080 por defecto)
 container_port = 8080
+
+# true  → RDS accesible desde internet (Railway, testing local)
+# false → RDS solo accesible desde ECS dentro de la VPC (producción)
+rds_publicly_accessible = true

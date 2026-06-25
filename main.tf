@@ -90,14 +90,27 @@ resource "aws_security_group" "ecs" {
 
 resource "aws_security_group" "rds" {
   name        = "${var.app_name}-rds-sg"
-  description = "Allow PostgreSQL only from ECS SG"
+  description = "Allow PostgreSQL from ECS SG and optionally from internet"
   vpc_id      = aws_vpc.main.id
 
+  # Acceso desde ECS (siempre)
   ingress {
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
     security_groups = [aws_security_group.ecs.id]
+  }
+
+  # Acceso público para Railway/testing (solo si rds_publicly_accessible = true)
+  dynamic "ingress" {
+    for_each = var.rds_publicly_accessible ? [1] : []
+    content {
+      from_port   = 5432
+      to_port     = 5432
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+      description = "Public access for Railway/external clients — disable in production"
+    }
   }
 
   egress {
@@ -229,7 +242,7 @@ resource "aws_db_instance" "postgres" {
   password               = var.db_password
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
-  publicly_accessible    = false # RDS no accesible desde internet
+  publicly_accessible    = var.rds_publicly_accessible
   skip_final_snapshot    = true
 
   tags = { Name = "${var.app_name}-db" }

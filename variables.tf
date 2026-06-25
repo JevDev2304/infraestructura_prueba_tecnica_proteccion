@@ -33,3 +33,9 @@ variable "container_port" {
   type        = number
   default     = 8080
 }
+
+variable "rds_publicly_accessible" {
+  description = "Hace la RDS accesible desde internet. true para pruebas con Railway, false para producción (solo ECS)"
+  type        = bool
+  default     = false
+}
