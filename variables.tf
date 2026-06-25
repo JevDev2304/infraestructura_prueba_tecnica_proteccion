@@ -39,3 +39,9 @@ variable "rds_publicly_accessible" {
   type        = bool
   default     = false
 }
+
+variable "ses_from_email" {
+  description = "Dirección de correo verificada en SES usada como remitente"
+  type        = string
+  default     = "noreply@juanespruebastecnicascolombia.com"
+}

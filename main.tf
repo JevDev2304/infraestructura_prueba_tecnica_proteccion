@@ -72,10 +72,11 @@ resource "aws_security_group" "ecs" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    from_port   = var.container_port
-    to_port     = var.container_port
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port       = var.container_port
+    to_port         = var.container_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+    description     = "Solo trafico desde el ALB"
   }
 
   egress {
@@ -136,6 +137,22 @@ resource "aws_ecr_repository" "app" {
   tags = { Name = var.app_name }
 }
 
+# ─── SSM (credenciales BD) ──────────────────────────────────────────────────
+
+resource "aws_ssm_parameter" "db_username" {
+  name  = "/${var.app_name}/db/username"
+  type  = "SecureString"
+  value = var.db_username
+  tags  = { Name = "${var.app_name}-db-username" }
+}
+
+resource "aws_ssm_parameter" "db_password" {
+  name  = "/${var.app_name}/db/password"
+  type  = "SecureString"
+  value = var.db_password
+  tags  = { Name = "${var.app_name}-db-password" }
+}
+
 # ─── IAM ────────────────────────────────────────────────────────────────────
 
 data "aws_iam_policy_document" "ecs_assume_role" {
@@ -148,6 +165,7 @@ data "aws_iam_policy_document" "ecs_assume_role" {
   }
 }
 
+# Execution Role: arranca el contenedor (pull ECR, escribir logs, leer SSM secrets)
 resource "aws_iam_role" "ecs_task_execution" {
   name               = "${var.app_name}-ecsTaskExecutionRole"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
@@ -159,8 +177,8 @@ resource "aws_iam_role_policy_attachment" "ecs_ecr_cloudwatch" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-resource "aws_iam_role_policy" "ecs_logs" {
-  name = "ecs-logs-policy"
+resource "aws_iam_role_policy" "ecs_execution_ssm" {
+  name = "ssm-secrets-policy"
   role = aws_iam_role.ecs_task_execution.id
 
   policy = jsonencode({
@@ -168,9 +186,30 @@ resource "aws_iam_role_policy" "ecs_logs" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "arn:aws:logs:*:*:*"
-      },
+        Action   = ["ssm:GetParameters", "kms:Decrypt"]
+        Resource = [
+          aws_ssm_parameter.db_username.arn,
+          aws_ssm_parameter.db_password.arn
+        ]
+      }
+    ]
+  })
+}
+
+# Task Role: permisos que usa el código de la aplicación en tiempo de ejecución
+resource "aws_iam_role" "ecs_task" {
+  name               = "${var.app_name}-ecsTaskRole"
+  assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
+  tags               = { Name = "${var.app_name}-ecsTaskRole" }
+}
+
+resource "aws_iam_role_policy" "ecs_task_ses" {
+  name = "ses-send-policy"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
       {
         Effect   = "Allow"
         Action   = ["ses:SendEmail", "ses:SendRawEmail"]
@@ -194,6 +233,7 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = "512"
   memory                   = "1024"
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
 
   container_definitions = jsonencode([
     {
@@ -212,10 +252,13 @@ resource "aws_ecs_task_definition" "app" {
       environment = [
         { name = "PORT",           value = tostring(var.container_port) },
         { name = "DB_URL",         value = "jdbc:postgresql://${aws_db_instance.postgres.address}:5432/${replace(var.app_name, "-", "_")}" },
-        { name = "DB_USER",        value = var.db_username },
-        { name = "DB_PASS",        value = var.db_password },
-        { name = "SES_FROM_EMAIL", value = "jevojob@gmail.com" },
+        { name = "SES_FROM_EMAIL", value = var.ses_from_email },
         { name = "SES_REGION",     value = var.aws_region }
+      ]
+
+      secrets = [
+        { name = "DB_USER", valueFrom = aws_ssm_parameter.db_username.arn },
+        { name = "DB_PASS", valueFrom = aws_ssm_parameter.db_password.arn }
       ]
 
       logConfiguration = {
