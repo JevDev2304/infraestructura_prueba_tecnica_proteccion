@@ -109,7 +109,7 @@ resource "aws_security_group" "rds" {
       to_port     = 5432
       protocol    = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
-      description = "Public access for Railway/external clients — disable in production"
+      description = "Public access for Railway/external clients - disable in production"
     }
   }
 
@@ -159,6 +159,27 @@ resource "aws_iam_role_policy_attachment" "ecs_ecr_cloudwatch" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy" "ecs_logs" {
+  name = "ecs-logs-policy"
+  role = aws_iam_role.ecs_task_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # ─── ECS ────────────────────────────────────────────────────────────────────
 
 resource "aws_ecs_cluster" "main" {
@@ -189,7 +210,12 @@ resource "aws_ecs_task_definition" "app" {
       ]
 
       environment = [
-        { name = "PORT", value = tostring(var.container_port) }
+        { name = "PORT",           value = tostring(var.container_port) },
+        { name = "DB_URL",         value = "jdbc:postgresql://${aws_db_instance.postgres.address}:5432/${replace(var.app_name, "-", "_")}" },
+        { name = "DB_USER",        value = var.db_username },
+        { name = "DB_PASS",        value = var.db_password },
+        { name = "SES_FROM_EMAIL", value = "jevojob@gmail.com" },
+        { name = "SES_REGION",     value = var.aws_region }
       ]
 
       logConfiguration = {
@@ -217,10 +243,86 @@ resource "aws_ecs_service" "app" {
   network_configuration {
     subnets          = [aws_subnet.public_a.id, aws_subnet.public_b.id]
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = true # necesario para pull de imagen desde ECR sin NAT Gateway
+    assign_public_ip = true
   }
 
+  load_balancer {
+    target_group_arn = aws_lb_target_group.app.arn
+    container_name   = var.app_name
+    container_port   = var.container_port
+  }
+
+  depends_on = [aws_lb_listener.http]
+
   tags = { Name = "${var.app_name}-service" }
+}
+
+# ─── ALB ────────────────────────────────────────────────────────────────────
+
+resource "aws_security_group" "alb" {
+  name        = "${var.app_name}-alb-sg"
+  description = "Allow HTTP and HTTPS inbound"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.app_name}-alb-sg" }
+}
+
+resource "aws_lb" "main" {
+  name               = "${var.app_name}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+  tags               = { Name = "${var.app_name}-alb" }
+}
+
+resource "aws_lb_target_group" "app" {
+  name        = "${var.app_name}-tg"
+  port        = var.container_port
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    path                = "/actuator/health"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    interval            = 30
+  }
+
+  tags = { Name = "${var.app_name}-tg" }
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
 }
 
 # ─── RDS ────────────────────────────────────────────────────────────────────

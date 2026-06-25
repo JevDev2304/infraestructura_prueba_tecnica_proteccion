@@ -18,3 +18,8 @@ output "ecs_service_name" {
   description = "Nombre del servicio ECS"
   value       = aws_ecs_service.app.name
 }
+
+output "alb_dns_name" {
+  description = "DNS del ALB — URL pública de la aplicación"
+  value       = aws_lb.main.dns_name
+}
