@@ -45,3 +45,15 @@ variable "ses_from_email" {
   type        = string
   default     = "noreply@juanespruebastecnicascolombia.com"
 }
+
+variable "jwt_secret" {
+  description = "Semilla secreta para firmar tokens JWT (mínimo 32 caracteres)"
+  type        = string
+  sensitive   = true
+}
+
+variable "app_password" {
+  description = "Contraseña para obtener el token JWT via POST /api/auth/token"
+  type        = string
+  sensitive   = true
+}

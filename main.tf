@@ -153,6 +153,20 @@ resource "aws_ssm_parameter" "db_password" {
   tags  = { Name = "${var.app_name}-db-password" }
 }
 
+resource "aws_ssm_parameter" "jwt_secret" {
+  name  = "/${var.app_name}/jwt/secret"
+  type  = "SecureString"
+  value = var.jwt_secret
+  tags  = { Name = "${var.app_name}-jwt-secret" }
+}
+
+resource "aws_ssm_parameter" "app_password" {
+  name  = "/${var.app_name}/app/password"
+  type  = "SecureString"
+  value = var.app_password
+  tags  = { Name = "${var.app_name}-app-password" }
+}
+
 # ─── IAM ────────────────────────────────────────────────────────────────────
 
 data "aws_iam_policy_document" "ecs_assume_role" {
@@ -189,7 +203,9 @@ resource "aws_iam_role_policy" "ecs_execution_ssm" {
         Action   = ["ssm:GetParameters", "kms:Decrypt"]
         Resource = [
           aws_ssm_parameter.db_username.arn,
-          aws_ssm_parameter.db_password.arn
+          aws_ssm_parameter.db_password.arn,
+          aws_ssm_parameter.jwt_secret.arn,
+          aws_ssm_parameter.app_password.arn
         ]
       }
     ]
@@ -257,8 +273,10 @@ resource "aws_ecs_task_definition" "app" {
       ]
 
       secrets = [
-        { name = "DB_USER", valueFrom = aws_ssm_parameter.db_username.arn },
-        { name = "DB_PASS", valueFrom = aws_ssm_parameter.db_password.arn }
+        { name = "DB_USER",      valueFrom = aws_ssm_parameter.db_username.arn },
+        { name = "DB_PASS",      valueFrom = aws_ssm_parameter.db_password.arn },
+        { name = "JWT_SECRET",   valueFrom = aws_ssm_parameter.jwt_secret.arn },
+        { name = "APP_PASSWORD", valueFrom = aws_ssm_parameter.app_password.arn }
       ]
 
       logConfiguration = {
